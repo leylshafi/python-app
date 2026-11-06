@@ -27,10 +27,41 @@ jobs:
         with:
           push: true
           tags: leylshafi/python-app:${{ env.COMMIT_ID }}
+    outputs:
+      commit_id: ${{ env.COMMIT_ID }}
   cd:
     needs: ci
     runs-on: self-hosted
+    permissions:
+      contents: write
     steps:
+      - uses: actions/checkout@v5
+      - name: Install yq
+        shell: bash
+        run: |
+          case "$(uname -m)" in
+            aarch64|arm64) ARCH=arm64 ;;
+            x86_64|amd64) ARCH=amd64 ;;
+            *) echo "unsupported architecture: $(uname -m)" >&2; exit 1 ;;
+          esac
+          mkdir -p "$HOME/.local/bin"
+          curl -fsSL -o "$HOME/.local/bin/yq" \
+            "https://github.com/mikefarah/yq/releases/latest/download/yq_linux_${ARCH}"
+          chmod +x "$HOME/.local/bin/yq"
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+      - name: Update image tag in values
+        shell: bash
+        run: |
+          yq -i '.image.tag = "${{ needs.ci.outputs.commit_id }}"' charts/python-app/values.yaml
+      - name: Commit and push values
+        shell: bash
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add charts/python-app/values.yaml
+          git commit -m "Update image tag to ${{ needs.ci.outputs.commit_id }}"
+          git pull --rebase
+          git push
       - name: Install Argo CD CLI
         shell: bash
         run: |
@@ -52,4 +83,6 @@ jobs:
             --grpc-web \
             --username admin \
             --password ${{ secrets.ARGOCD_PASSWORD }}
+          argocd app get python-app --refresh > /dev/null
           argocd app sync python-app
+          argocd app wait python-app --health --timeout 300

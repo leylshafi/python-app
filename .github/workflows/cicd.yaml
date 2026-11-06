@@ -31,6 +31,19 @@ jobs:
     needs: ci
     runs-on: self-hosted
     steps:
+      - name: Install Argo CD CLI
+        shell: bash
+        run: |
+          case "$(uname -m)" in
+            aarch64|arm64) ARCH=arm64 ;;
+            x86_64|amd64) ARCH=amd64 ;;
+            *) echo "unsupported architecture: $(uname -m)" >&2; exit 1 ;;
+          esac
+          mkdir -p "$HOME/.local/bin"
+          curl -fsSL -o "$HOME/.local/bin/argocd" \
+            "https://github.com/argoproj/argo-cd/releases/latest/download/argocd-linux-${ARCH}"
+          chmod +x "$HOME/.local/bin/argocd"
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
       - name: Argocd app sync
         shell: bash
         run: |
